@@ -1,42 +1,60 @@
 require 'chrome_remote'
 
-chrome = ChromeRemote.client
+class CLI
+  def cmd_init
+    url = 'https://www.amazon.co.jp/mn/dcw/myx.html/ref=kinw_myk_redirect'
+    chrome.send_cmd 'Page.navigate', url: url
+    puts <<-END
+Opened #{url}
+ and listening at http://localhost:9222/ (headless chrome)
 
-chrome.send_cmd "Network.enable"
-chrome.send_cmd "Page.enable"
-chrome.send_cmd "Runtime.enable"
-chrome.send_cmd "Input.enable"
+1. open http://localhost:9222/
+2. select amazon.co.jp session and login if not yet
+3. load kindle list manually
+4. execute extract command
+    END
+  end
 
-chrome.on "Network.requestWillBeSent" do |params|
-  #p params["request"]["url"]
+  def cmd_extract
+    code = %Q!$('div[view="contentTab_list_desktop_tmyx"]').map((i,x) => $(x).attr('name') )!
+    out = chrome.send_cmd 'Runtime.evaluate', expression: code, returnByValue: true
+
+    result_value = out['result']['value']
+    length = result_value['length'].to_i
+    asins = (0...length).map do |i|
+      result_value[i.to_s].sub(/^contentTabList_/, '')
+    end
+    p asins
+
+    puts "extracted #{asins.length} items"
+  end
+
+  def cmd_usage
+    puts "USAGE: #{$0} {init|extract}"
+  end
+
+  def chrome
+    @chrome ||= init_chrome
+  end
+
+  private def init_chrome
+    chrome = ChromeRemote.client
+    chrome.send_cmd "Network.enable"
+    chrome.send_cmd "Page.enable"
+    chrome.send_cmd "Runtime.enable"
+    chrome.send_cmd "Input.enable"
+    chrome
+  end
 end
-#=begin
-chrome.send_cmd 'Page.navigate', url: 'https://www.amazon.co.jp/mn/dcw/myx.html/ref=kinw_myk_redirect'
-chrome.wait_for 'Page.loadEventFired'
 
-sleep 10
+cli = CLI.new
 
-puts 'scroll!'
-require 'pry'; binding.pry
-chrome.send_cmd 'Input.synthesizeScrollGesture', x: 0, y: 0, yDistance: -1000, speed: 10_000
-
-sleep 3
-
-code = %Q!$('div[view="contentTab_list_desktop_tmyx"]').map((i,x) => $(x).attr('name') )!
-#out = chrome.send_cmd 'Runtime.evaluate', expression: %Q!["hello","world"]!, returnByValue: true
-out = chrome.send_cmd 'Runtime.evaluate', expression: code, returnByValue: true
-
-result_value = out['result']['value']
-# p out
-length = result_value['length'].to_i
-(0...length).each do |i|
-  p result_value[i.to_s]
+cmd = ARGV.shift
+case cmd
+when 'init'
+  cli.cmd_init
+when 'extract'
+  cli.cmd_extract
+else
+  cli.cmd_usage
 end
-
-puts "extracted #{length} items"
-#=end
-
-#out = chrome.send_cmd 'Runtime.evaluate', expression: %Q!["hello","world"]!, returnByValue: true
-#p out
-
-#chrome.listen
