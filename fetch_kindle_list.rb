@@ -38,6 +38,47 @@ Opened #{url}
     end
   end
 
+  def cmd_amakan
+    path = nil
+    require 'optparse'
+    opt = OptionParser.new
+    opt.on('-f FILE', 'asin list file to import to amakan') {|x| path = x }
+    opt.parse!
+
+    unless path
+      puts opt
+      exit
+    end
+
+    open(path) do |f|
+      while line = f.gets
+        asin = line.strip
+        puts "processing asin #{asin}"
+        amakan_mark_as_read(asin)
+      end
+    end
+  end
+
+  private def amakan_mark_as_read(asin)
+    url = "https://amakan.net/search?query=https://www.amazon.co.jp/dp/#{asin}"
+
+    chrome.send_cmd 'Page.navigate', url: url
+    chrome.wait_for 'Page.loadEventFired'
+
+    js = <<-JS
+btns = $$('a.button')
+for (i in btns) {
+  if (btns[i].innerText.match(/読んだ/)) {
+    if (!btns[i].className.match(/active/)) {
+      btns[i].click()
+    }
+  }
+}
+JS
+    chrome.send_cmd 'Runtime.evaluate', expression: js, includeCommandLineAPI: true
+    sleep 0.5
+  end
+
   def cmd_usage
     puts "USAGE: #{$0} {init|extract}"
   end
@@ -64,6 +105,8 @@ when 'init'
   cli.cmd_init
 when 'extract'
   cli.cmd_extract
+when 'amakan'
+  cli.cmd_amakan
 else
   cli.cmd_usage
 end
